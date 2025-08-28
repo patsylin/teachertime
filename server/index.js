@@ -1,6 +1,6 @@
-import express from 'express';
-import pg from 'pg';
-import dotenv from 'dotenv';
+import express from "express";
+import pg from "pg";
+import dotenv from "dotenv";
 dotenv.config();
 
 const { Pool } = pg;
@@ -15,8 +15,12 @@ const pool = new Pool({
 const app = express();
 app.use(express.json());
 
+app.get("/health", (req, res) => {
+  res.json({ ok: true });
+});
+
 // GET effective schedule grid for a date
-app.get('/schedule/effective', async (req, res) => {
+app.get("/schedule/effective", async (req, res) => {
   const { date } = req.query;
   try {
     const { rows } = await pool.query(
@@ -35,16 +39,16 @@ app.get('/schedule/effective', async (req, res) => {
     res.json(rows);
   } catch (e) {
     console.error(e);
-    res.status(500).json({ error: 'failed_to_fetch_schedule' });
+    res.status(500).json({ error: "failed_to_fetch_schedule" });
   }
 });
 
 // POST assign a sub to a specific period (idempotent per period)
-app.post('/sub-assignments', async (req, res) => {
+app.post("/sub-assignments", async (req, res) => {
   const { absence_id, period_id, sub_teacher_id, assigned_by } = req.body;
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
+    await client.query("BEGIN");
 
     // Ensure period isn't already taken
     const taken = await client.query(
@@ -52,8 +56,8 @@ app.post('/sub-assignments', async (req, res) => {
       [period_id]
     );
     if (taken.rowCount > 0) {
-      await client.query('ROLLBACK');
-      return res.status(409).json({ error: 'already_assigned' });
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "already_assigned" });
     }
 
     // Insert assignment
@@ -61,29 +65,32 @@ app.post('/sub-assignments', async (req, res) => {
       `INSERT INTO sub_assignments(absence_id, period_id, sub_teacher_id, status, assigned_by)
        VALUES ($1,$2,$3,'assigned',$4)
        RETURNING id, absence_id, period_id, sub_teacher_id, status`,
-      [absence_id, period_id, sub_teacher_id, assigned_by || 'admin']
+      [absence_id, period_id, sub_teacher_id, assigned_by || "admin"]
     );
 
-    await client.query('COMMIT');
+    await client.query("COMMIT");
     res.status(201).json(rows[0]);
   } catch (e) {
-    await client.query('ROLLBACK');
+    await client.query("ROLLBACK");
     console.error(e);
-    res.status(500).json({ error: 'assign_failed' });
+    res.status(500).json({ error: "assign_failed" });
   } finally {
     client.release();
   }
 });
 
 // DELETE unassign
-app.delete('/sub-assignments/:id', async (req, res) => {
+app.delete("/sub-assignments/:id", async (req, res) => {
   const { id } = req.params;
   try {
-    await pool.query(`UPDATE sub_assignments SET status='cancelled' WHERE id=$1`, [id]);
+    await pool.query(
+      `UPDATE sub_assignments SET status='cancelled' WHERE id=$1`,
+      [id]
+    );
     res.json({ ok: true });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ error: 'unassign_failed' });
+    res.status(500).json({ error: "unassign_failed" });
   }
 });
 
